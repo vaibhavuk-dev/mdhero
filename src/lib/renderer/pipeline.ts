@@ -67,9 +67,9 @@ export interface RenderResult {
   /**
    * Absolute on-disk paths of every local image the document references, after
    * resolution against `baseDir`. The caller hands these to the `allow_assets`
-   * command so the webview's asset protocol will actually serve them — files
-   * outside the static `$HOME/**` scope (external drives, /tmp, repos elsewhere)
-   * are otherwise refused (issue #31).
+   * command, which is the only way a file becomes fetchable by the webview's
+   * asset protocol (issue #31) — and which serves only files inside the
+   * document's own folder tree or a pinned folder, whatever this list says.
    */
   assetPaths: string[];
   /** True when the frontmatter declares `marp: true` — a Marp slide deck (#44). */

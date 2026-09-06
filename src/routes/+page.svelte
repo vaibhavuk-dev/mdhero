@@ -189,7 +189,7 @@
     clearTimeout(splitPreviewTimer);
     splitPreviewTimer = setTimeout(() => {
       const result = renderFull(content, baseDir);
-      allowAssets(result.assetPaths);
+      allowAssets(result.assetPaths, activeTab.filePath);
       splitPreviewHtml = result.html;
     }, 120);
     return () => clearTimeout(splitPreviewTimer);
@@ -243,7 +243,7 @@
         // Fire-and-forget: referenced images were almost always allowed at open;
         // a brand-new external image typed mid-edit self-heals on the next
         // render/reload. Not worth making this sync path async (#31).
-        allowAssets(result.assetPaths);
+        allowAssets(result.assetPaths, activeTab.filePath);
         // Update the rendered HTML in the docStore so the viewer reflects
         // the unsaved edits. We do NOT call tabStore.updateTabContent or
         // markSaved — the source on disk is unchanged, dirty stays true.
@@ -290,7 +290,7 @@
       }
       const baseDir = getBaseDir(targetPath);
       const result = renderFull(tab.editContent, baseDir);
-      await allowAssets(result.assetPaths);
+      await allowAssets(result.assetPaths, targetPath);
       tabStore.markSaved(tab.id);
       tabStore.updateTabContent(
         targetPath,
