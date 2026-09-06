@@ -92,11 +92,28 @@
         // strict mode this is the last gate before an <svg> from an untrusted
         // document is live — strip <script>, foreignObject and on* handlers,
         // keep the diagram's shapes, text, styles and marker refs.
+        // Same allowlist shape as the main pipeline's sanitize call, extended
+        // with the elements Mermaid actually emits. DOMPurify's defaults do the
+        // security work: <script>, on* handlers and javascript: URLs are
+        // dropped, while the diagram's shapes, text, styles and label markup
+        // (which lives in <foreignObject>) survive intact.
         container.innerHTML = DOMPurify.sanitize(svg, {
-          USE_PROFILES: { svg: true, svgFilters: true },
-          ADD_TAGS: ["use", "style"],
-          ADD_ATTR: ["xmlns", "xmlns:xlink", "xlink:href", "dominant-baseline"],
-          FORBID_TAGS: ["foreignObject"],
+          ADD_TAGS: [
+            "svg", "g", "path", "line", "rect", "circle", "ellipse", "polygon",
+            "polyline", "text", "tspan", "defs", "marker", "style", "use",
+            "symbol", "clipPath", "pattern", "linearGradient", "radialGradient",
+            "stop", "filter", "title", "desc", "foreignObject",
+          ],
+          ADD_ATTR: [
+            "class", "style", "xmlns", "xmlns:xlink", "xlink:href", "viewBox",
+            "d", "fill", "stroke", "stroke-width", "stroke-dasharray",
+            "transform", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "r",
+            "rx", "ry", "width", "height", "points", "offset", "stop-color",
+            "text-anchor", "dominant-baseline", "font-size", "font-family",
+            "font-weight", "marker-end", "marker-start", "id", "aria-hidden",
+            "aria-roledescription", "focusable", "role", "preserveAspectRatio",
+            "requiredFeatures",
+          ],
         });
         pre.replaceWith(container);
       } catch {
