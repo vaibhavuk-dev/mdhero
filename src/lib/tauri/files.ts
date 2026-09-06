@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
+import { get } from "svelte/store";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { document } from "../stores/document";
 import { tabStore } from "../stores/tabs";
 import { renderFull } from "../renderer/pipeline";
 import { addRecentFile } from "../stores/recents";
+import { pinnedFolders } from "../stores/pinned";
 import { basename } from "../utils/path";
 
 export async function readMarkdownFile(path: string): Promise<string> {
@@ -37,7 +39,7 @@ export async function openFile(path: string): Promise<void> {
 
     // Whitelist the document's local images with the asset protocol before the
     // HTML hits the DOM, so images outside the static $HOME scope load (#31).
-    await allowAssets(result.assetPaths);
+    await allowAssets(result.assetPaths, absolutePath);
 
     const tabId = tabStore.addTab(absolutePath, fileName, content, result.html, result.frontmatter, result.wordCount);
 
@@ -146,7 +148,7 @@ export async function reloadCurrentFile(path: string): Promise<void> {
     const result = renderFull(content, baseDir);
     const fileName = basename(absolutePath);
 
-    await allowAssets(result.assetPaths);
+    await allowAssets(result.assetPaths, absolutePath);
 
     tabStore.updateTabContent(absolutePath, content, result.html, result.frontmatter, result.wordCount);
 
@@ -187,12 +189,27 @@ export async function openWithSystem(path: string): Promise<void> {
 }
 
 /**
- * Whitelist resolved local image paths with the webview's asset protocol so
- * they can be fetched regardless of the static $HOME scope (issue #31). A
- * failure here must not block text rendering — a broken image is acceptable
- * degradation, a blank document is not — so it's swallowed.
+ * Whitelist a document's resolved local image paths with the webview's asset
+ * protocol (issue #31). The Rust side serves only files inside the document's
+ * own folder tree (its git checkout, if it is in one) or a pinned folder — see
+ * `allow_assets` in commands.rs — and hands back whatever it refused, which is
+ * logged so a broken image is diagnosable. A failure here must not block text
+ * rendering — a broken image is acceptable degradation, a blank document is
+ * not — so errors are swallowed.
  */
-export async function allowAssets(paths: string[]): Promise<void> {
+export async function allowAssets(paths: string[], documentPath: string): Promise<void> {
   if (paths.length === 0) return;
-  await invoke("allow_assets", { paths }).catch(() => {});
+  try {
+    const rejected = await invoke<string[]>("allow_assets", {
+      documentPath,
+      pinnedFolders: get(pinnedFolders),
+      paths,
+    });
+    if (rejected.length > 0) {
+      console.warn(
+        `MDHero will not serve ${rejected.length} image(s) outside the document's folder tree. Pin the folder they live in to allow them:`,
+        rejected
+      );
+    }
+  } catch {}
 }

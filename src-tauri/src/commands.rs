@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use tauri::{
@@ -125,23 +125,94 @@ pub fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
 }
 
-/// Allow the webview's asset protocol to serve specific image files.
+/// Allow the webview's asset protocol to serve specific image files — but only
+/// files a document is entitled to.
 ///
-/// The static `assetProtocol.scope` in tauri.conf.json only covers `$HOME`, so
-/// documents opened from elsewhere (external drives, /tmp, repos outside home)
-/// can't load their local images (issue #31). The frontend resolves each
-/// referenced image to an absolute path during rendering and passes them here
-/// so we whitelist exactly those files at runtime — tighter than widening the
-/// static scope. Re-allowing an already-allowed path is a no-op.
+/// The frontend resolves every local `<img src>` to an absolute path during
+/// rendering and hands the list here (issue #31). Each path is canonicalized
+/// (so symlinks cannot smuggle a file in) and must sit inside one of the
+/// document's asset roots, see [`asset_roots`]. Anything else is refused and
+/// returned to the caller so it can be logged. There is no static scope in
+/// `tauri.conf.json` any more: the only files the webview can ever fetch are
+/// the ones a document legitimately referenced from its own tree.
+///
+/// Why the bound matters: DOMPurify is the only thing between a markdown file
+/// and script execution in the webview, and `csp` is null. Before this check a
+/// document could write `![x](../../../.ssh/id_rsa)` and make that file
+/// fetchable, so a single sanitizer bypass would have been a file-exfiltration
+/// primitive across the whole disk. Now it is bounded to what the user opened.
 #[tauri::command]
-pub fn allow_assets(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
+pub fn allow_assets(
+    app: AppHandle,
+    document_path: String,
+    pinned_folders: Vec<String>,
+    paths: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let (allowed, rejected) = partition_assets(Path::new(&document_path), &pinned_folders, &paths);
     let scope = app.asset_protocol_scope();
-    for p in &paths {
+    for p in &allowed {
         scope
             .allow_file(p)
-            .map_err(|e| format!("Failed to allow asset {}: {}", p, e))?;
+            .map_err(|e| format!("Failed to allow asset {}: {}", p.display(), e))?;
     }
-    Ok(())
+    Ok(rejected)
+}
+
+/// Split the requested asset paths into the canonical files that may be
+/// served and the requests that must be refused. Pure so it can be tested
+/// without an app handle.
+pub fn partition_assets(
+    document_path: &Path,
+    pinned_folders: &[String],
+    paths: &[String],
+) -> (Vec<PathBuf>, Vec<String>) {
+    let roots = asset_roots(document_path, pinned_folders);
+    let mut allowed = Vec::new();
+    let mut rejected = Vec::new();
+    for p in paths {
+        match fs::canonicalize(p) {
+            Ok(c) if c.is_file() && roots.iter().any(|r| c.starts_with(r)) => allowed.push(c),
+            _ => rejected.push(p.clone()),
+        }
+    }
+    (allowed, rejected)
+}
+
+/// The directory trees a document may load images from:
+///
+/// 1. the directory the document lives in — widened to the enclosing git
+///    checkout when there is one, because `docs/guide.md` referencing
+///    `../assets/diagram.png` is how repositories are laid out;
+/// 2. every folder the user pinned in the sidebar — an explicit act of trust
+///    and the escape hatch for vaults that keep attachments beside the notes
+///    tree rather than inside it.
+///
+/// Everything is canonicalized so comparison happens on real paths. A document
+/// that does not exist on disk (`new://`, `paste://`) contributes no root, so
+/// only pinned folders remain.
+fn asset_roots(document_path: &Path, pinned_folders: &[String]) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(doc) = fs::canonicalize(document_path) {
+        if let Some(dir) = doc.parent() {
+            roots.push(git_root(dir).unwrap_or_else(|| dir.to_path_buf()));
+        }
+    }
+    for folder in pinned_folders {
+        if let Ok(f) = fs::canonicalize(folder) {
+            if f.is_dir() {
+                roots.push(f);
+            }
+        }
+    }
+    roots
+}
+
+/// Nearest ancestor (including `dir` itself) that holds a `.git` entry — a
+/// directory for a normal checkout, a file for worktrees and submodules.
+fn git_root(dir: &Path) -> Option<PathBuf> {
+    dir.ancestors()
+        .find(|a| a.join(".git").exists())
+        .map(Path::to_path_buf)
 }
 
 #[tauri::command]
@@ -443,5 +514,188 @@ mod tests {
             strip_verbatim_prefix(r"C:\Users\hugo\a.md".to_string()),
             r"C:\Users\hugo\a.md"
         );
+    }
+}
+
+#[cfg(test)]
+mod asset_scope_tests {
+    use super::partition_assets;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    /// A fresh directory under the OS temp dir. On macOS that lives behind a
+    /// symlink (`/var` → `/private/var`), which is deliberate: it proves the
+    /// comparison happens on canonical paths, not on the strings handed in.
+    fn scratch() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "mdhero-asset-scope-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn touch(path: &Path) -> String {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, b"x").unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    fn s(p: &Path) -> String {
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn accepts_an_image_beside_the_document_and_returns_it_canonical() {
+        let dir = scratch();
+        let doc = dir.join("note.md");
+        touch(&doc);
+        let pic = touch(&dir.join("pic.png"));
+
+        let (allowed, rejected) = partition_assets(&doc, &[], &[pic.clone()]);
+
+        assert_eq!(allowed, vec![fs::canonicalize(&pic).unwrap()]);
+        assert!(rejected.is_empty());
+    }
+
+    #[test]
+    fn accepts_images_in_subfolders_of_the_document() {
+        let dir = scratch();
+        let doc = dir.join("note.md");
+        touch(&doc);
+        let pic = touch(&dir.join("img").join("deep").join("pic.png"));
+
+        let (allowed, rejected) = partition_assets(&doc, &[], &[pic]);
+
+        assert_eq!(allowed.len(), 1);
+        assert!(rejected.is_empty());
+    }
+
+    #[test]
+    fn rejects_traversal_above_the_document_tree() {
+        let dir = scratch();
+        let doc = dir.join("notes").join("note.md");
+        touch(&doc);
+        let secret = touch(&dir.join("secret.txt"));
+        // Exactly what `![x](../secret.txt)` resolves to in the renderer.
+        let traversal = s(&dir.join("notes").join("..").join("secret.txt"));
+
+        let (allowed, rejected) = partition_assets(&doc, &[], &[secret.clone(), traversal.clone()]);
+
+        assert!(allowed.is_empty());
+        assert_eq!(rejected, vec![secret, traversal]);
+    }
+
+    #[test]
+    fn widens_to_the_enclosing_git_checkout_but_no_further() {
+        let dir = scratch();
+        let repo = dir.join("repo");
+        fs::create_dir_all(repo.join(".git")).unwrap();
+        let doc = repo.join("docs").join("guide.md");
+        touch(&doc);
+        let inside = touch(&repo.join("assets").join("diagram.png"));
+        let above = touch(&dir.join("outside.png"));
+
+        let (allowed, rejected) = partition_assets(&doc, &[], &[inside.clone(), above.clone()]);
+
+        assert_eq!(allowed, vec![fs::canonicalize(&inside).unwrap()]);
+        assert_eq!(rejected, vec![above]);
+    }
+
+    #[test]
+    fn a_git_file_marks_a_checkout_too() {
+        // Worktrees and submodules keep a `.git` *file*, not a directory.
+        let dir = scratch();
+        let repo = dir.join("wt");
+        touch(&repo.join(".git"));
+        let doc = repo.join("docs").join("guide.md");
+        touch(&doc);
+        let inside = touch(&repo.join("assets").join("diagram.png"));
+
+        let (allowed, _) = partition_assets(&doc, &[], &[inside]);
+
+        assert_eq!(allowed.len(), 1);
+    }
+
+    #[test]
+    fn a_pinned_folder_is_an_allowed_root() {
+        let dir = scratch();
+        let doc = dir.join("notes").join("note.md");
+        touch(&doc);
+        let shared = touch(&dir.join("attachments").join("pic.png"));
+
+        let (allowed, rejected) = partition_assets(&doc, &[], &[shared.clone()]);
+        assert!(allowed.is_empty());
+        assert_eq!(rejected, vec![shared.clone()]);
+
+        let pinned = vec![s(&dir.join("attachments"))];
+        let (allowed, rejected) = partition_assets(&doc, &pinned, &[shared]);
+        assert_eq!(allowed.len(), 1);
+        assert!(rejected.is_empty());
+    }
+
+    #[test]
+    fn a_pinned_folder_does_not_match_by_string_prefix() {
+        let dir = scratch();
+        let doc = dir.join("elsewhere").join("note.md");
+        touch(&doc);
+        let pic = touch(&dir.join("attachments-private").join("pic.png"));
+
+        let pinned = vec![s(&dir.join("attachments"))];
+        fs::create_dir_all(dir.join("attachments")).unwrap();
+        let (allowed, rejected) = partition_assets(&doc, &pinned, &[pic.clone()]);
+
+        assert!(allowed.is_empty());
+        assert_eq!(rejected, vec![pic]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_symlink_that_escapes_the_tree() {
+        let dir = scratch();
+        let doc = dir.join("notes").join("note.md");
+        touch(&doc);
+        let secret = dir.join("secret.txt");
+        touch(&secret);
+        let link = dir.join("notes").join("innocent.png");
+        std::os::unix::fs::symlink(&secret, &link).unwrap();
+
+        let (allowed, rejected) = partition_assets(&doc, &[], &[s(&link)]);
+
+        assert!(allowed.is_empty());
+        assert_eq!(rejected, vec![s(&link)]);
+    }
+
+    #[test]
+    fn rejects_missing_files_and_directories() {
+        let dir = scratch();
+        let doc = dir.join("note.md");
+        touch(&doc);
+        fs::create_dir_all(dir.join("folder")).unwrap();
+        let missing = s(&dir.join("nope.png"));
+        let folder = s(&dir.join("folder"));
+
+        let (allowed, rejected) = partition_assets(&doc, &[], &[missing.clone(), folder.clone()]);
+
+        assert!(allowed.is_empty());
+        assert_eq!(rejected, vec![missing, folder]);
+    }
+
+    #[test]
+    fn a_document_that_is_not_on_disk_gets_only_pinned_roots() {
+        let dir = scratch();
+        let pic = touch(&dir.join("pic.png"));
+        let doc = Path::new("paste://1");
+
+        let (allowed, rejected) = partition_assets(doc, &[], &[pic.clone()]);
+        assert!(allowed.is_empty());
+        assert_eq!(rejected, vec![pic.clone()]);
+
+        let (allowed, _) = partition_assets(doc, &[s(&dir)], &[pic]);
+        assert_eq!(allowed.len(), 1);
     }
 }
