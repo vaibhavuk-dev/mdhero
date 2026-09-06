@@ -166,7 +166,19 @@ pub fn partition_assets(
     pinned_folders: &[String],
     paths: &[String],
 ) -> (Vec<PathBuf>, Vec<String>) {
-    let roots = asset_roots(document_path, pinned_folders);
+    let ceiling = home_dir().and_then(|h| fs::canonicalize(h).ok());
+    partition_assets_below(document_path, pinned_folders, paths, ceiling.as_deref())
+}
+
+/// [`partition_assets`] with an explicit ceiling for the git-root walk; see
+/// [`git_root`]. Split out so the ceiling is testable without a real home.
+fn partition_assets_below(
+    document_path: &Path,
+    pinned_folders: &[String],
+    paths: &[String],
+    ceiling: Option<&Path>,
+) -> (Vec<PathBuf>, Vec<String>) {
+    let roots = asset_roots(document_path, pinned_folders, ceiling);
     let mut allowed = Vec::new();
     let mut rejected = Vec::new();
     for p in paths {
@@ -190,11 +202,11 @@ pub fn partition_assets(
 /// Everything is canonicalized so comparison happens on real paths. A document
 /// that does not exist on disk (`new://`, `paste://`) contributes no root, so
 /// only pinned folders remain.
-fn asset_roots(document_path: &Path, pinned_folders: &[String]) -> Vec<PathBuf> {
+fn asset_roots(document_path: &Path, pinned_folders: &[String], ceiling: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(doc) = fs::canonicalize(document_path) {
         if let Some(dir) = doc.parent() {
-            roots.push(git_root(dir).unwrap_or_else(|| dir.to_path_buf()));
+            roots.push(git_root(dir, ceiling).unwrap_or_else(|| dir.to_path_buf()));
         }
     }
     for folder in pinned_folders {
@@ -209,8 +221,14 @@ fn asset_roots(document_path: &Path, pinned_folders: &[String]) -> Vec<PathBuf> 
 
 /// Nearest ancestor (including `dir` itself) that holds a `.git` entry — a
 /// directory for a normal checkout, a file for worktrees and submodules.
-fn git_root(dir: &Path) -> Option<PathBuf> {
+///
+/// The walk never reaches `ceiling` (the home directory in production), any
+/// ancestor of it, or a filesystem root. Without that, a dotfiles repo at
+/// `~/.git` would widen every document under home to the whole home
+/// directory — exactly the exposure this bound exists to remove.
+fn git_root(dir: &Path, ceiling: Option<&Path>) -> Option<PathBuf> {
     dir.ancestors()
+        .take_while(|a| a.parent().is_some() && ceiling.map_or(true, |c| !c.starts_with(a)))
         .find(|a| a.join(".git").exists())
         .map(Path::to_path_buf)
 }
@@ -519,7 +537,7 @@ mod tests {
 
 #[cfg(test)]
 mod asset_scope_tests {
-    use super::partition_assets;
+    use super::{partition_assets, partition_assets_below};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -604,6 +622,43 @@ mod asset_scope_tests {
 
         assert_eq!(allowed, vec![fs::canonicalize(&inside).unwrap()]);
         assert_eq!(rejected, vec![above]);
+    }
+
+    #[test]
+    fn never_widens_to_the_ceiling_or_above_it() {
+        // A dotfiles checkout at ~/.git must not turn "~" into an asset root.
+        let dir = scratch();
+        let home = dir.join("home");
+        fs::create_dir_all(home.join(".git")).unwrap();
+        fs::create_dir_all(dir.join(".git")).unwrap(); // and one above home
+        let doc = home.join("notes").join("note.md");
+        touch(&doc);
+        let elsewhere = touch(&home.join("Pictures").join("pic.png"));
+        let beside = touch(&home.join("notes").join("pic.png"));
+        let ceiling = fs::canonicalize(&home).unwrap();
+
+        let (allowed, rejected) =
+            partition_assets_below(&doc, &[], &[elsewhere.clone(), beside.clone()], Some(&ceiling));
+
+        assert_eq!(allowed, vec![fs::canonicalize(&beside).unwrap()]);
+        assert_eq!(rejected, vec![elsewhere]);
+    }
+
+    #[test]
+    fn a_checkout_below_the_ceiling_still_widens() {
+        let dir = scratch();
+        let home = dir.join("home");
+        let repo = home.join("code").join("repo");
+        fs::create_dir_all(repo.join(".git")).unwrap();
+        let doc = repo.join("docs").join("guide.md");
+        touch(&doc);
+        let inside = touch(&repo.join("assets").join("d.png"));
+        let ceiling = fs::canonicalize(&home).unwrap();
+
+        let (allowed, rejected) = partition_assets_below(&doc, &[], &[inside], Some(&ceiling));
+
+        assert_eq!(allowed.len(), 1);
+        assert!(rejected.is_empty());
     }
 
     #[test]
