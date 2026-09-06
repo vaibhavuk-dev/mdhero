@@ -18,6 +18,7 @@
   import { basename } from "$lib/utils/path";
   import { settings, getContentMaxWidth } from "$lib/stores/settings";
   import { startFileWatcher, stopFileWatcher } from "$lib/tauri/watcher";
+  import { restoreSession } from "$lib/tauri/session";
   import { themeMode, cycleTheme } from "$lib/stores/theme";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { invoke } from "@tauri-apps/api/core";
@@ -604,6 +605,14 @@
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     void (async () => {
+      // Bring back last run's tabs first (#72), so a file opened via "Open
+      // With" or the CLI below lands on top of them as the active tab.
+      if ($settings.restoreTabsOnLaunch) {
+        try {
+          await restoreSession();
+        } catch {}
+      }
+
       // Check for files opened via "Open With" / double-click (buffered in Rust state)
       try {
         const { invoke } = await import("@tauri-apps/api/core");

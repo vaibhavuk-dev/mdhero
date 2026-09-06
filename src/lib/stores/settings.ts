@@ -10,6 +10,8 @@ export interface ReaderSettings {
   showLineNumbers: boolean;
   /** Auto-open `marp: true` documents as a slideshow (#44). */
   autoPresentMarp: boolean;
+  /** Reopen the files that were open when the app last ran (#72). */
+  restoreTabsOnLaunch: boolean;
 }
 
 const STORAGE_KEY = "mdhero-settings";
@@ -32,6 +34,7 @@ function loadSettings(): ReaderSettings {
     closeOnEscape: true,
     showLineNumbers: true,
     autoPresentMarp: true,
+    restoreTabsOnLaunch: true,
   };
 
   if (typeof localStorage === "undefined") return defaults;
