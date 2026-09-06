@@ -13,6 +13,12 @@ export interface Tab {
   editContent: string;
   dirty: boolean;
   lastSavedAt: number;
+  /**
+   * The file changed on disk while this tab had unsaved edits (#97). The edits
+   * are kept; this flag marks the tab and makes Save ask before overwriting.
+   * Cleared by a save, or once the tab is no longer dirty.
+   */
+  diskChanged: boolean;
 }
 
 export const HOME_TAB_ID = "__home__";
@@ -123,6 +129,7 @@ function createTabStore() {
       editContent: content,
       dirty: false,
       lastSavedAt: 0,
+      diskChanged: false,
     };
 
     tabs.update((ts) => [...ts, newTab]);
@@ -186,9 +193,14 @@ function createTabStore() {
         // Preserve in-progress edits when content updates from external sources (file watcher)
         if (t.isEditing) {
           next.dirty = t.editContent !== content;
+          // Remember that the disk moved under unsaved edits, so the tab can
+          // show it and Save can ask first (#97). Not raised when the disk
+          // now matches what the user typed — there is nothing to lose then.
+          next.diskChanged = next.dirty && (t.diskChanged || content !== t.content);
         } else {
           next.editContent = content;
           next.dirty = false;
+          next.diskChanged = false;
         }
         return next;
       })
@@ -236,7 +248,7 @@ function createTabStore() {
     tabs.update((ts) =>
       ts.map((t) => {
         if (t.id !== id) return t;
-        return { ...t, content: t.editContent, dirty: false, lastSavedAt: Date.now() };
+        return { ...t, content: t.editContent, dirty: false, diskChanged: false, lastSavedAt: Date.now() };
       })
     );
   }

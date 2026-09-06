@@ -86,7 +86,8 @@ pub fn run() {
             commands::list_folder_md_files,
             commands::quit_app,
             commands::show_ai_context_menu,
-            watcher::start_watching,
+            watcher::watch_file,
+            watcher::unwatch_file,
             watcher::stop_watching,
             get_opened_files,
         ])

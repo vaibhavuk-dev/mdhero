@@ -1,64 +1,89 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const listen = vi.fn();
 const invoke = vi.fn();
-const reloadCurrentFile = vi.fn();
+const reloadFile = vi.fn();
+const getLastSavedAt = vi.fn((_path: string) => 0);
 
 vi.mock("@tauri-apps/api/event", () => ({ listen }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
-vi.mock("../../src/lib/tauri/files", () => ({ reloadCurrentFile }));
-vi.mock("../../src/lib/stores/tabs", () => ({
-  tabStore: { getLastSavedAt: vi.fn(() => 0) },
-}));
+vi.mock("../../src/lib/tauri/files", () => ({ reloadFile }));
+vi.mock("../../src/lib/stores/tabs", () => ({ tabStore: { getLastSavedAt } }));
 
-const { startFileWatcher, stopFileWatcher } = await import("../../src/lib/tauri/watcher");
+const { initFileWatcher, stopFileWatcher } = await import("../../src/lib/tauri/watcher");
 
-describe("file watcher", () => {
+// #97: one session-wide listener; the backend says which file changed and the
+// reload goes to that file, whichever tab owns it.
+describe("file watcher (all tabs)", () => {
+  let handler: ((e: { payload: { path: string } }) => void) | null = null;
+  const unlistenFn = vi.fn();
+
   beforeEach(() => {
-    // Order matters twice over. The mocks are configured first because
-    // stopFileWatcher now invokes "stop_watching" and awaits it — an
-    // unconfigured vi.fn() returns undefined, not a promise. Then the teardown
-    // runs, and clearAllMocks wipes its calls so they don't land in the
-    // per-test counts below (it clears calls only, implementations survive).
-    listen.mockResolvedValue(vi.fn());
+    vi.useFakeTimers();
+    // stopFileWatcher awaits invoke("stop_watching"); an unconfigured vi.fn()
+    // returns undefined, not a promise, so configure it before the teardown.
     invoke.mockResolvedValue(undefined);
     stopFileWatcher();
     vi.clearAllMocks();
+    getLastSavedAt.mockReturnValue(0);
+    invoke.mockResolvedValue(undefined);
+    listen.mockImplementation(async (_name: string, cb: typeof handler) => {
+      handler = cb;
+      return unlistenFn;
+    });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("registers exactly one listener no matter how often it is initialised", async () => {
+    await initFileWatcher();
+    await initFileWatcher();
+    await initFileWatcher();
+    expect(listen).toHaveBeenCalledTimes(1);
+    expect(listen.mock.calls[0][0]).toBe("file-changed");
   });
 
-  it("restarts the backend watcher when switching between file tabs", async () => {
-    await startFileWatcher("C:/docs/a.md");
-    await startFileWatcher("C:/docs/b.md");
-    await startFileWatcher("C:/docs/a.md");
-
-    expect(invoke).toHaveBeenNthCalledWith(1, "start_watching", { path: "C:/docs/a.md" });
-    expect(invoke).toHaveBeenNthCalledWith(2, "start_watching", { path: "C:/docs/b.md" });
-    expect(invoke).toHaveBeenNthCalledWith(3, "start_watching", { path: "C:/docs/a.md" });
-    expect(invoke).toHaveBeenCalledTimes(3);
-    expect(listen).toHaveBeenCalledTimes(3);
+  it("reloads the file named in the event, after coalescing a burst", async () => {
+    await initFileWatcher();
+    handler!({ payload: { path: "/docs/a.md" } });
+    handler!({ payload: { path: "/docs/a.md" } });
+    handler!({ payload: { path: "/docs/a.md" } });
+    vi.advanceTimersByTime(150);
+    expect(reloadFile).toHaveBeenCalledTimes(1);
+    expect(reloadFile).toHaveBeenCalledWith("/docs/a.md");
   });
 
-  // Closing the last tab used to leave the Rust watcher running: an external
-  // edit to the closed file then pushed it back into the document store, on top
-  // of the home screen.
-  it("stops the backend watcher, not just the event listener", async () => {
-    const firstUnlisten = vi.fn();
-    listen.mockResolvedValueOnce(firstUnlisten);
+  it("keeps two files' reloads independent — a background tab's change is not lost", async () => {
+    await initFileWatcher();
+    handler!({ payload: { path: "/docs/a.md" } });
+    handler!({ payload: { path: "/docs/b.md" } });
+    vi.advanceTimersByTime(150);
+    expect(reloadFile.mock.calls.map((c) => c[0]).sort()).toEqual(["/docs/a.md", "/docs/b.md"]);
+  });
 
-    await startFileWatcher("C:/docs/a.md");
+  it("skips the event caused by our own save of that file, and only that file", async () => {
+    await initFileWatcher();
+    getLastSavedAt.mockImplementation((p: string) => (p === "/docs/a.md" ? Date.now() : 0));
+    handler!({ payload: { path: "/docs/a.md" } });
+    handler!({ payload: { path: "/docs/b.md" } });
+    vi.advanceTimersByTime(150);
+    expect(reloadFile).toHaveBeenCalledTimes(1);
+    expect(reloadFile).toHaveBeenCalledWith("/docs/b.md");
+  });
+
+  it("ignores an event without a path", async () => {
+    await initFileWatcher();
+    handler!({ payload: {} as any });
+    vi.advanceTimersByTime(150);
+    expect(reloadFile).not.toHaveBeenCalled();
+  });
+
+  it("stops on both sides: unlistens, cancels pending reloads, tells the backend", async () => {
+    await initFileWatcher();
+    handler!({ payload: { path: "/docs/a.md" } });
     stopFileWatcher();
-
-    expect(firstUnlisten).toHaveBeenCalledOnce();
-    expect(invoke).toHaveBeenLastCalledWith("stop_watching");
-  });
-
-  it("unsubscribes the previous event listener when switching files", async () => {
-    const firstUnlisten = vi.fn();
-    listen.mockResolvedValueOnce(firstUnlisten).mockResolvedValueOnce(vi.fn());
-
-    await startFileWatcher("C:/docs/a.md");
-    await startFileWatcher("C:/docs/b.md");
-
-    expect(firstUnlisten).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(150);
+    expect(unlistenFn).toHaveBeenCalledTimes(1);
+    expect(reloadFile).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith("stop_watching");
   });
 });

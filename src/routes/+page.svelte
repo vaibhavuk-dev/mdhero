@@ -13,11 +13,12 @@
     pathExists,
     saveAsNewDocument,
     saveFile,
+    unwatchFile,
   } from "$lib/tauri/files";
   import { showToast } from "$lib/stores/toast";
   import { basename } from "$lib/utils/path";
   import { settings, getContentMaxWidth } from "$lib/stores/settings";
-  import { startFileWatcher, stopFileWatcher } from "$lib/tauri/watcher";
+  import { initFileWatcher, stopFileWatcher } from "$lib/tauri/watcher";
   import { restoreSession } from "$lib/tauri/session";
   import { attachSplitSync, type SplitSync } from "$lib/utils/split-sync";
   import { themeMode, cycleTheme } from "$lib/stores/theme";
@@ -53,7 +54,6 @@
   import { saveProgress, getProgress } from "$lib/stores/readingProgress";
 
   let rendererReady = $state(false);
-  let lastWatchedPath: string | null = null;
   let searchVisible = $state(false);
   let pasteVisible = $state(false);
   let pasteDefaultMode = $state<"paste" | "url">("paste");
@@ -314,6 +314,17 @@
         targetPath = saved;
         targetName = basename(saved);
       } else {
+        if (tab.diskChanged) {
+          // The file changed on disk while these edits were unsaved (#97).
+          // Same convention as the close dialog: the default button is the
+          // safe one, so a reflexive Return keeps editing.
+          const { ask } = await import("@tauri-apps/plugin-dialog");
+          const keepEditing = await ask(
+            `${tab.fileName} changed on disk while you were editing. Saving will overwrite that version.`,
+            { title: "File changed on disk", kind: "warning", okLabel: "Keep Editing", cancelLabel: "Overwrite" }
+          );
+          if (keepEditing) return;
+        }
         await saveFile(tab.filePath, tab.editContent);
       }
       const baseDir = getBaseDir(targetPath);
@@ -476,6 +487,7 @@
       saveProgressNow();
     }
     tabStore.closeTab(id);
+    unwatchFile(t.filePath);
     return true;
   }
 
@@ -655,6 +667,10 @@
     window.addEventListener("beforeunload", saveProgressNow);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
+    // One file-changed listener for the session (#97); which files are watched
+    // follows the tabs (open / close / save-as), not the active document.
+    void initFileWatcher();
+
     void (async () => {
       // Bring back last run's tabs first (#72), so a file opened via "Open
       // With" or the CLI below lands on top of them as the active tab.
@@ -689,6 +705,7 @@
     })();
 
     return () => {
+      stopFileWatcher();
       window.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("keyup", handleKeyup);
       window.removeEventListener("blur", stopScroll);
@@ -1103,35 +1120,6 @@
     });
   });
 
-  // Start/stop the file watcher as the active document changes.
-  //
-  // The stop half matters: closing the last tab leaves docStore.filePath null,
-  // and without an explicit teardown the watcher for the file just closed kept
-  // running. An external edit to it then fired reloadCurrentFile, which calls
-  // docStore.set — so a document the user had closed reappeared on top of the
-  // home screen. `url://` joins the sentinels here too: it is not a filesystem
-  // path, so start_watching could never do anything useful with it.
-  $effect(() => {
-    const path = $docStore.filePath;
-    const watchable =
-      !!path
-      && !path.startsWith("paste://")
-      && !path.startsWith("new://")
-      && !path.startsWith("url://");
-
-    if (!watchable) {
-      if (lastWatchedPath !== null) {
-        lastWatchedPath = null;
-        stopFileWatcher();
-      }
-      return;
-    }
-
-    if (path !== lastWatchedPath) {
-      lastWatchedPath = path;
-      startFileWatcher(path);
-    }
-  });
 </script>
 
 <div class="min-h-screen transition-colors page-root">
