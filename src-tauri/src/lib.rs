@@ -129,6 +129,9 @@ pub fn run() {
                         "close" => {
                             let _ = window.eval("window.__mdhero_close_tab?.()");
                         }
+                        "print" => {
+                            let _ = window.eval("window.__mdhero_print?.()");
+                        }
                         "check_updates" => {
                             let _ = window.eval("window.__mdhero_check_updates?.()");
                         }

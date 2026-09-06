@@ -457,6 +457,27 @@
   // a platform delivers both the menu accelerator and the keydown for one press,
   // the second call returns instead of closing a second tab. handleCloseTab
   // always awaits at least a microtask, so the flag is set before it can re-enter.
+  // Print the rendered document via the native dialog (#89), from File > Print,
+  // Cmd/Ctrl+P, or the toolbar. Same conditions as the toolbar button: there
+  // must be a rendered document and it must not be in the editor. The flag
+  // makes a double-fire harmless if a platform delivers both the menu
+  // accelerator and the keydown for one press — WebView2 also binds Ctrl+P
+  // itself, and two print dialogs is worse than none.
+  let printInFlight = false;
+  function printDocument() {
+    if (printInFlight) return;
+    if (!$docStore.renderedHtml || activeTab?.isEditing) return;
+    printInFlight = true;
+    try {
+      window.print();
+    } finally {
+      // window.print() is modal on every platform we ship, so by the time it
+      // returns the dialog has been dismissed; a short hold covers the
+      // menu+keydown pair arriving back to back.
+      setTimeout(() => { printInFlight = false; }, 300);
+    }
+  }
+
   let closeInFlight = false;
   async function closeActiveTab() {
     if (closeInFlight) return;
@@ -513,6 +534,9 @@
     // either: the shortcut and the menu item were both dead.
     (window as any).__mdhero_close_tab = () => {
       void closeActiveTab();
+    };
+    (window as any).__mdhero_print = () => {
+      printDocument();
     };
     (window as any).__mdhero_zen = () => {
       zenMode = !zenMode;
@@ -864,6 +888,13 @@
     if ((e.metaKey || e.ctrlKey) && e.key === "w") {
       e.preventDefault();
       void closeActiveTab();
+      return;
+    }
+    // Cmd/Ctrl+P print (#89). Same story as Cmd+W: the File menu owns the
+    // accelerator where native menus consume keys; this is the fallback.
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "p") {
+      e.preventDefault();
+      printDocument();
       return;
     }
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "f") {

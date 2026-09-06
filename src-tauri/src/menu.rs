@@ -44,6 +44,10 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> Result<Menu<R>, tauri::Err
                 Some("CmdOrCtrl+Shift+V"),
             )?,
             &PredefinedMenuItem::separator(app)?,
+            // Native print dialog for the rendered document (#89). Windows had
+            // no way in but WebView2's own Ctrl+P, which nothing advertised.
+            &MenuItem::with_id(app, "print", "Print...", true, Some("CmdOrCtrl+P"))?,
+            &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "close", "Close Tab", true, Some("CmdOrCtrl+W"))?,
         ],
     )?;
