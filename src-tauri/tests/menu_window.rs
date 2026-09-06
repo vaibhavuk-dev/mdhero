@@ -64,5 +64,23 @@ fn run() {
         "Edit > Find (Cmd+F) should be preserved"
     );
 
-    println!("ok: Window submenu present with tiling id; Edit > Find preserved");
+    // File > Print (#89) must exist, be enabled, and carry the platform
+    // accelerator — it is the only discoverable way to print on Windows.
+    let file = menu
+        .items()
+        .unwrap()
+        .into_iter()
+        .find_map(|item| {
+            let submenu = item.as_submenu()?;
+            (submenu.text().ok()? == "File").then(|| submenu.clone())
+        })
+        .expect("File submenu should exist");
+    let print = file
+        .get("print")
+        .expect("File > Print should exist");
+    let print = print.as_menuitem().expect("File > Print should be a plain item");
+    assert_eq!(print.text().unwrap(), "Print...");
+    assert!(print.is_enabled().unwrap(), "File > Print should be enabled");
+
+    println!("ok: Window submenu present with tiling id; Edit > Find preserved; File > Print present");
 }

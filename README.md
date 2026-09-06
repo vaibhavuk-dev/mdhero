@@ -50,7 +50,7 @@ Markdown is where developers, writers, and AI live today — READMEs, Claude Cod
 - **Math & diagrams** — KaTeX for equations, Mermaid for flowcharts
 - **Reader controls** — adjust font, size, line height, width
 - **Zen mode** — distraction-free full-screen reading
-- **Print/Export to PDF** — with clean print styles
+- **Print/Export to PDF** — File › Print or Cmd/Ctrl+P opens the native print dialog (print to paper or to PDF), with clean print styles
 
 ### Editing (v0.2.0)
 - **Lightweight in-app editor** — `Cmd+E` flips any local file into edit mode
@@ -81,7 +81,7 @@ Markdown is where developers, writers, and AI live today — READMEs, Claude Cod
 ### Sharing
 - **Copy as Rich Text** — paste directly into Google Docs, Notion
 - **Copy as Markdown** — raw source
-- **Export PDF** — print-friendly output
+- **Print / Export PDF** — File › Print, Cmd/Ctrl+P, or the toolbar button; print-friendly output
 
 ---
 
