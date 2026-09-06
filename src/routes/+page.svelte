@@ -19,6 +19,7 @@
   import { settings, getContentMaxWidth } from "$lib/stores/settings";
   import { startFileWatcher, stopFileWatcher } from "$lib/tauri/watcher";
   import { restoreSession } from "$lib/tauri/session";
+  import { attachSplitSync, type SplitSync } from "$lib/utils/split-sync";
   import { themeMode, cycleTheme } from "$lib/stores/theme";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { invoke } from "@tauri-apps/api/core";
@@ -192,8 +193,34 @@
       const result = renderFull(content, baseDir);
       allowAssets(result.assetPaths, activeTab.filePath);
       splitPreviewHtml = result.html;
+      // The re-render replaced the preview's blocks; put it back where the
+      // editor is so typing never leaves the two panes on different sections.
+      tick().then(() => splitSync?.syncFromEditor());
     }, 120);
     return () => clearTimeout(splitPreviewTimer);
+  });
+
+  // Split-mode scroll sync (#74): editor and preview follow each other. Keyed
+  // on the mode string, not the tab object, so a keystroke (which replaces the
+  // tab object) does not re-attach the listeners. Attached after tick so both
+  // panes exist; the first sync lands the preview where the editor already is.
+  let splitSync: SplitSync | null = null;
+  $effect(() => {
+    if (activeEditMode !== "split") return;
+    let gone = false;
+    tick().then(() => {
+      if (gone) return;
+      const ta = document.querySelector<HTMLTextAreaElement>("textarea.editor");
+      const preview = document.querySelector<HTMLElement>("main.split-preview");
+      if (!ta || !preview) return;
+      splitSync = attachSplitSync(ta, preview);
+      splitSync.syncFromEditor();
+    });
+    return () => {
+      gone = true;
+      splitSync?.dispose();
+      splitSync = null;
+    };
   });
 
   // Marp presentation (#44). `presenting` is a page-level view mode (like rawMode);

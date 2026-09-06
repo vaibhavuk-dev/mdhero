@@ -90,6 +90,47 @@ function lineOf(el: HTMLElement): number {
   return parseInt(el.getAttribute("data-source-line") || "0", 10);
 }
 
+// --- Rendered blocks inside a scroll container (split-mode preview, #74) ---
+//
+// Same anchoring as the viewer above, but relative to a container that scrolls
+// itself instead of the window, so the reference line is the container's top
+// edge rather than the sticky chrome.
+
+/** Fractional source line anchored at the top of `container`'s viewport. */
+export function readBlockLineIn(container: HTMLElement): number {
+  const top = container.getBoundingClientRect().top;
+  const elements = container.querySelectorAll<HTMLElement>("[data-source-line]");
+  if (elements.length === 0) return 0;
+  for (const el of elements) {
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom > top) {
+      const frac = rect.height > 0 ? clamp01((top - rect.top) / rect.height) : 0;
+      return lineOf(el) + frac;
+    }
+  }
+  return lineOf(elements[elements.length - 1]);
+}
+
+/** Scroll `container` so the block holding fractional `anchor` sits at its top. */
+export function scrollBlocksToLineIn(container: HTMLElement, anchor: number): void {
+  if (anchor <= 0) {
+    container.scrollTop = 0;
+    return;
+  }
+  const elements = Array.from(container.querySelectorAll<HTMLElement>("[data-source-line]"));
+  if (elements.length === 0) return;
+  const floor = Math.floor(anchor);
+  const frac = anchor - floor;
+  let target = elements[0];
+  for (const el of elements) {
+    if (lineOf(el) <= floor) target = el;
+    else break;
+  }
+  const rect = target.getBoundingClientRect();
+  const top = container.getBoundingClientRect().top;
+  container.scrollTop += rect.top - top + frac * rect.height;
+}
+
 // --- Raw (window-scrolled <pre class="raw-source">) ---
 
 function readRawLine(): number {
@@ -136,7 +177,7 @@ function scrollEditorToLine(anchor: number): void {
 // line's wrapped rows (0 = line top, →1 = next line top). The fraction is what
 // preserves position inside a tall block across a mode switch (issue #21).
 
-function clamp01(x: number): number {
+export function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
@@ -146,7 +187,7 @@ function clampLine(line: number, count: number): number {
 }
 
 /** Largest index `i` with `offsets[i] <= y` (binary search). */
-function lineAtOffset(offsets: number[], y: number): number {
+export function lineAtOffset(offsets: number[], y: number): number {
   if (offsets.length === 0 || y <= 0) return 0;
   let lo = 0;
   let hi = offsets.length - 1;
@@ -164,7 +205,7 @@ function lineAtOffset(offsets: number[], y: number): number {
 }
 
 /** Fractional source line at pixel `y`: integer line + fraction into its rows. */
-function fractionalLineAtOffset(offsets: number[], y: number): number {
+export function fractionalLineAtOffset(offsets: number[], y: number): number {
   if (offsets.length === 0 || y <= 0) return 0;
   const floor = lineAtOffset(offsets, y);
   const base = offsets[floor];
@@ -174,7 +215,7 @@ function fractionalLineAtOffset(offsets: number[], y: number): number {
 }
 
 /** Inverse of `fractionalLineAtOffset`: pixel offset for a fractional line. */
-function pixelAtLine(offsets: number[], anchor: number): number {
+export function pixelAtLine(offsets: number[], anchor: number): number {
   if (offsets.length === 0) return 0;
   const floor = clampLine(Math.floor(anchor), offsets.length);
   const frac = anchor - Math.floor(anchor);
@@ -192,9 +233,10 @@ function pixelAtLine(offsets: number[], anchor: number): number {
  * Why a mirror: a <textarea> exposes no per-line geometry, and a wrapped <pre>'s
  * lines don't map to `lineHeight`. We replicate the element's content width,
  * font metrics, and wrap rules off-screen and read each line's real `offsetTop`.
- * Called once per mode switch, so a single layout pass is fine.
+ * Called once per mode switch, so a single layout pass is fine. Split-mode
+ * sync calls it per scroll but caches the result per (text, width).
  */
-function measureLineOffsets(reference: HTMLElement, text: string): number[] {
+export function measureLineOffsets(reference: HTMLElement, text: string): number[] {
   const cs = getComputedStyle(reference);
   const padL = parseFloat(cs.paddingLeft) || 0;
   const padR = parseFloat(cs.paddingRight) || 0;
