@@ -131,8 +131,23 @@ const DIR_AUTO_BLOCKS = new Set([
 // other attributes tolerated and ignored) or `</div>`. Raw HTML is disabled in
 // the renderer, so these arrive as ordinary paragraphs of text; we recognise
 // exactly these two shapes and nothing else.
-const DIR_WRAPPER_OPEN = /^<div(?:\s+[^>]*?)?\sdir\s*=\s*["']?(rtl|ltr)["']?(?:\s[^>]*)?>$/i;
+//
+// Two guards keep this linear in the input, because the renderer runs on the
+// UI thread and a document is attacker-controlled: the tag shape is checked
+// with a pattern that has no overlapping quantifiers, and the `dir` value is
+// then read from the attribute text by a second bounded search. A wrapper line
+// is a few dozen characters, so anything longer is not even inspected.
+const DIR_WRAPPER_MAX_LEN = 256;
+const DIR_WRAPPER_TAG = /^<div(?:\s[^>]*)?>$/i;
+const DIR_WRAPPER_VALUE = /(?:^|\s)dir\s*=\s*["']?(rtl|ltr)["']?(?=\s|>|$)/i;
 const DIR_WRAPPER_CLOSE = /^<\/div\s*>$/i;
+
+/** "rtl" / "ltr" when `content` is exactly a direction wrapper line, else null. */
+function wrapperDirection(content: string): "rtl" | "ltr" | null {
+  if (content.length > DIR_WRAPPER_MAX_LEN || !DIR_WRAPPER_TAG.test(content)) return null;
+  const m = content.slice(4, -1).match(DIR_WRAPPER_VALUE);
+  return m ? (m[1].toLowerCase() as "rtl" | "ltr") : null;
+}
 
 /**
  * Give each text-bearing block a direction (#64, #95).
@@ -158,19 +173,27 @@ function addDirPlugin(mdInstance: MarkdownIt) {
     const stack: string[] = [];
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
+      // A wrapper is a paragraph of its own. `hidden` paragraphs are the
+      // implicit ones inside tight list items; a `<div>` typed as a bullet is
+      // text, not a wrapper, so bullets never vanish.
       if (
         token.type === "paragraph_open" &&
+        !token.hidden &&
         tokens[i + 1]?.type === "inline" &&
         tokens[i + 2]?.type === "paragraph_close"
       ) {
         const content = tokens[i + 1].content.trim();
-        const open = content.match(DIR_WRAPPER_OPEN);
+        const open = wrapperDirection(content);
         if (open) {
-          stack.push(open[1].toLowerCase());
+          stack.push(open);
           i += 2;
           continue;
         }
-        if (stack.length > 0 && DIR_WRAPPER_CLOSE.test(content)) {
+        if (
+          stack.length > 0 &&
+          content.length <= DIR_WRAPPER_MAX_LEN &&
+          DIR_WRAPPER_CLOSE.test(content)
+        ) {
           stack.pop();
           i += 2;
           continue;

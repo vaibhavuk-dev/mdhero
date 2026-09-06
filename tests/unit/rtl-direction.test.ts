@@ -94,3 +94,41 @@ describe("<div dir> wrapper lines (#95)", () => {
     expect(html).toContain("<pre><code>");
   });
 });
+
+// Security review of the wrapper rule: a document is attacker-controlled and
+// the renderer runs on the UI thread.
+describe("<div dir> wrapper hardening", () => {
+  it("discards every other attribute on the wrapper — nothing from the tag reaches the output", () => {
+    const html = render('<div dir="rtl" onmouseover="alert(1)" style="position:fixed" id="x" class="y">\n\nمتن.\n\n</div>');
+    expect(html).toBe('<p dir="rtl">متن.</p>\n'.replace('<p', '<p data-source-line="2"'));
+    expect(html).not.toMatch(/onmouseover|style=|id="x"|class="y"/);
+  });
+
+  it("only ever emits dir=rtl or dir=ltr — a crafted value stays text", () => {
+    const html = render('<div dir="rtl\\" onclick=\\"alert(1)">\n\nمتن.\n\n</div>');
+    expect(html).toContain("&lt;div");
+    expect(html).not.toMatch(/<[a-z][^>]*onclick=/); // never on an element, only as escaped text
+    expect(html.match(/\bdir="([^"]*)"/g)!.every((a) => a === 'dir="auto"')).toBe(true);
+  });
+
+  it("does not treat a tight list bullet as a wrapper, so bullets never vanish", () => {
+    const html = render('- <div dir="rtl">\n- x\n- </div>');
+    expect(html).toContain("&lt;div");
+    expect(html).not.toContain("<li dir=\"rtl\"");
+    expect((html.match(/<li/g) ?? []).length).toBe(3);
+  });
+
+  it("matches in linear time — a 100k-character tag-shaped paragraph renders in milliseconds", () => {
+    const shapes = [
+      "<div" + " ".repeat(100_000) + "x>",
+      "<div" + " ".repeat(100_000) + " dir=xx>",
+      "<div " + "a=b ".repeat(25_000) + ">",
+      "</div" + " ".repeat(100_000) + ">",
+    ];
+    for (const s of shapes) {
+      const t = performance.now();
+      render(s + "\n\nx\n\n</div>");
+      expect(performance.now() - t).toBeLessThan(200);
+    }
+  });
+});
