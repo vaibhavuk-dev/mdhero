@@ -21,7 +21,7 @@
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-process": "~2.3.1",
     "@tauri-apps/plugin-updater": "~2.10.1",
-    "dompurify": "^3.3.3",
+    "dompurify": "^3.4.13",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.45",
     "mark.js": "^8.11.1",
