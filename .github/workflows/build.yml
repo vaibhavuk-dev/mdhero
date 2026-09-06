@@ -217,8 +217,9 @@ jobs:
             See the full changelog in the [commit history](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}).
 
             ## Install
-            - **macOS**: Download the `.dmg` file
-            - **Windows**: Download the `.msi` installer or `.exe` (NSIS)
+            - **macOS** (Apple Silicon): Download the `.dmg` file
+            - **Windows** (x64 or ARM64): Download the `.msi` installer or `-setup.exe` (NSIS) — pick the `x64` or `arm64` file for your machine
+            - **Linux** (x64 or arm64): Download the `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE) or `.AppImage` (any distro) — `amd64`/`x86_64` or `arm64`/`aarch64`
           releaseDraft: false
           prerelease: false
 

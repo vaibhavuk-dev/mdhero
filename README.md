@@ -115,9 +115,11 @@ Distraction-free full-screen reading. Just you and the document.
 
 ## Install
 
-**macOS**: Download `.dmg` from [Releases →](https://github.com/vaibhav-kakde-in/mdhero/releases/latest)
+**macOS** (Apple Silicon): Download `.dmg` from [Releases →](https://github.com/vaibhav-kakde-in/mdhero/releases/latest)
 
-**Windows**: Download `.msi` from [Releases →](https://github.com/vaibhav-kakde-in/mdhero/releases/latest)
+**Windows** (x64 or ARM64): Download `.msi` or `-setup.exe` from [Releases →](https://github.com/vaibhav-kakde-in/mdhero/releases/latest) — pick the `x64` or `arm64` file for your machine
+
+**Linux** (x64 or arm64): Download `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE) or `.AppImage` (any distro) from [Releases →](https://github.com/vaibhav-kakde-in/mdhero/releases/latest) — `amd64`/`x86_64` or `arm64`/`aarch64`
 
 Or build from source (see below).
 
