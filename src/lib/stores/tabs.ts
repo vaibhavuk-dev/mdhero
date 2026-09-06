@@ -17,9 +17,72 @@ export interface Tab {
 
 export const HOME_TAB_ID = "__home__";
 
+/**
+ * What survives a restart (#72): the on-disk files that were open, in tab
+ * order, and which of them was active (`null` when the home tab was). Nothing
+ * else — unsaved edits, scroll offsets and the `paste://` / `url://` / `new://`
+ * tabs have no file to come back from.
+ */
+export interface SavedSession {
+  paths: string[];
+  activePath: string | null;
+}
+
+const SESSION_KEY = "mdhero-session";
+
+function isRestorablePath(filePath: string): boolean {
+  return !!filePath
+    && !filePath.startsWith("paste://")
+    && !filePath.startsWith("url://")
+    && !filePath.startsWith("new://");
+}
+
+function loadSession(): SavedSession | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.paths)) return null;
+    return {
+      paths: parsed.paths.filter((p: unknown) => typeof p === "string" && isRestorablePath(p)),
+      activePath: typeof parsed.activePath === "string" ? parsed.activePath : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(session: SavedSession) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {}
+}
+
 function createTabStore() {
   const tabs = writable<Tab[]>([]);
   const activeTabId = writable<string | null>(HOME_TAB_ID);
+
+  // Captured once, before the persistence subscription below overwrites the
+  // key with this (empty) session. `restoreSession` reads it on launch.
+  const savedSession = loadSession();
+
+  function persistSession() {
+    const currentTabs = get(tabs);
+    const active = currentTabs.find((t) => t.id === get(activeTabId));
+    saveSession({
+      paths: currentTabs.filter((t) => isRestorablePath(t.filePath)).map((t) => t.filePath),
+      activePath: active && isRestorablePath(active.filePath) ? active.filePath : null,
+    });
+  }
+  tabs.subscribe(persistSession);
+  activeTabId.subscribe(persistSession);
+
+  /** The session as it was when this store initialised — i.e. the previous run's. */
+  function getSavedSession(): SavedSession | null {
+    return savedSession;
+  }
 
   function generateId(): string {
     return Math.random().toString(36).slice(2, 10);
@@ -207,6 +270,7 @@ function createTabStore() {
     getLastSavedAt,
     rebindPath,
     saveScrollPosition,
+    getSavedSession,
   };
 }
 

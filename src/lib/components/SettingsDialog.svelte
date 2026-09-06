@@ -47,6 +47,19 @@
 
           <label class="setting-row">
             <div class="setting-text">
+              <span class="setting-label">Restore tabs on launch</span>
+              <span class="setting-hint">Reopen the files that were open last time, in the same order.</span>
+            </div>
+            <input
+              type="checkbox"
+              checked={$settings.restoreTabsOnLaunch}
+              onchange={(e) => settings.update((s) => ({ ...s, restoreTabsOnLaunch: e.currentTarget.checked }))}
+              class="setting-switch"
+            />
+          </label>
+
+          <label class="setting-row">
+            <div class="setting-text">
               <span class="setting-label">Auto-present Marp decks</span>
               <span class="setting-hint">Open documents with <code>marp: true</code> frontmatter as a slideshow.</span>
             </div>
