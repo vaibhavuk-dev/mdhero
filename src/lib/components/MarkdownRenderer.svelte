@@ -6,6 +6,7 @@
   import { tocEntries, activeHeadingId, extractToc, isObserverPaused } from "$lib/stores/toc";
   import { aiLookup, setPendingSelection } from "$lib/stores/aiLookup";
   import mermaid from "mermaid";
+  import DOMPurify from "dompurify";
 
   let {
     html = "",
@@ -47,7 +48,10 @@
     mermaid.initialize({
       startOnLoad: false,
       theme,
-      securityLevel: "loose",
+      // #security: strict keeps Mermaid from emitting HTML labels or click-node
+      // JS/URL bindings from untrusted diagram source; the SVG is then sanitized
+      // again below as defense in depth. (Felipe Boralli disclosure, 2026-08-14.)
+      securityLevel: "strict",
       themeVariables: isDark ? {
         primaryColor: "#0A1E2E",
         primaryTextColor: "#e5e5e7",
@@ -84,7 +88,16 @@
         const { svg } = await mermaid.render(id, source);
         const container = document.createElement("div");
         container.className = "mermaid-diagram my-4 flex justify-center";
-        container.innerHTML = svg;
+        // #security: never trust Mermaid's SVG straight into the DOM. Even in
+        // strict mode this is the last gate before an <svg> from an untrusted
+        // document is live — strip <script>, foreignObject and on* handlers,
+        // keep the diagram's shapes, text, styles and marker refs.
+        container.innerHTML = DOMPurify.sanitize(svg, {
+          USE_PROFILES: { svg: true, svgFilters: true },
+          ADD_TAGS: ["use", "style"],
+          ADD_ATTR: ["xmlns", "xmlns:xlink", "xlink:href", "dominant-baseline"],
+          FORBID_TAGS: ["foreignObject"],
+        });
         pre.replaceWith(container);
       } catch {
         // Leave the code block as-is if Mermaid fails
