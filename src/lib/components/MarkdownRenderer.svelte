@@ -6,6 +6,7 @@
   import { tocEntries, activeHeadingId, extractToc, isObserverPaused } from "$lib/stores/toc";
   import { aiLookup, setPendingSelection } from "$lib/stores/aiLookup";
   import mermaid from "mermaid";
+  import DOMPurify from "dompurify";
 
   let {
     html = "",
@@ -47,7 +48,10 @@
     mermaid.initialize({
       startOnLoad: false,
       theme,
-      securityLevel: "loose",
+      // #security: strict keeps Mermaid from emitting HTML labels or click-node
+      // JS/URL bindings from untrusted diagram source; the SVG is then sanitized
+      // again below as defense in depth. (Felipe Boralli disclosure, 2026-08-14.)
+      securityLevel: "strict",
       themeVariables: isDark ? {
         primaryColor: "#0A1E2E",
         primaryTextColor: "#e5e5e7",
@@ -84,7 +88,33 @@
         const { svg } = await mermaid.render(id, source);
         const container = document.createElement("div");
         container.className = "mermaid-diagram my-4 flex justify-center";
-        container.innerHTML = svg;
+        // #security: never trust Mermaid's SVG straight into the DOM. Even in
+        // strict mode this is the last gate before an <svg> from an untrusted
+        // document is live — strip <script>, foreignObject and on* handlers,
+        // keep the diagram's shapes, text, styles and marker refs.
+        // Same allowlist shape as the main pipeline's sanitize call, extended
+        // with the elements Mermaid actually emits. DOMPurify's defaults do the
+        // security work: <script>, on* handlers and javascript: URLs are
+        // dropped, while the diagram's shapes, text, styles and label markup
+        // (which lives in <foreignObject>) survive intact.
+        container.innerHTML = DOMPurify.sanitize(svg, {
+          ADD_TAGS: [
+            "svg", "g", "path", "line", "rect", "circle", "ellipse", "polygon",
+            "polyline", "text", "tspan", "defs", "marker", "style", "use",
+            "symbol", "clipPath", "pattern", "linearGradient", "radialGradient",
+            "stop", "filter", "title", "desc", "foreignObject",
+          ],
+          ADD_ATTR: [
+            "class", "style", "xmlns", "xmlns:xlink", "xlink:href", "viewBox",
+            "d", "fill", "stroke", "stroke-width", "stroke-dasharray",
+            "transform", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "r",
+            "rx", "ry", "width", "height", "points", "offset", "stop-color",
+            "text-anchor", "dominant-baseline", "font-size", "font-family",
+            "font-weight", "marker-end", "marker-start", "id", "aria-hidden",
+            "aria-roledescription", "focusable", "role", "preserveAspectRatio",
+            "requiredFeatures",
+          ],
+        });
         pre.replaceWith(container);
       } catch {
         // Leave the code block as-is if Mermaid fails

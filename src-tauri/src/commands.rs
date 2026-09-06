@@ -22,9 +22,29 @@ pub fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// Extensions the app is allowed to read from / write to on behalf of the
+/// web view. MDHero is a markdown app: a document, its links and its saves are
+/// text. Bounding the two filesystem commands to this set means that even if a
+/// script ever ran in the web view (see the Mermaid/CSP hardening), it cannot
+/// turn `read_markdown_file` / `write_markdown_file` into an arbitrary-file
+/// read/write primitive against `~/.ssh/id_rsa`, `authorized_keys` and the
+/// like. (Felipe Boralli disclosure, 2026-08-14.)
+const ALLOWED_TEXT_EXTENSIONS: &[&str] = &["md", "markdown", "mdown", "mkd", "mdx", "txt", "text"];
+
+fn has_allowed_extension(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| ALLOWED_TEXT_EXTENSIONS.iter().any(|a| a.eq_ignore_ascii_case(e)))
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 pub fn read_markdown_file(path: String) -> Result<String, String> {
     let p = Path::new(&path);
+
+    if !has_allowed_extension(p) {
+        return Err(format!("Refusing to read a non-text file: {}", path));
+    }
 
     if !p.exists() {
         return Err(format!("File not found: {}", path));
@@ -40,6 +60,10 @@ pub fn read_markdown_file(path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn write_markdown_file(path: String, content: String) -> Result<(), String> {
     let p = Path::new(&path);
+
+    if !has_allowed_extension(p) {
+        return Err(format!("Refusing to write a non-text file: {}", path));
+    }
 
     if p.exists() && !p.is_file() {
         return Err(format!("Not a file: {}", path));
@@ -512,6 +536,44 @@ pub fn show_ai_context_menu(
     window.popup_menu(&menu).map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod fs_scope_tests {
+    use super::{has_allowed_extension, read_markdown_file, write_markdown_file};
+    use std::path::Path;
+
+    #[test]
+    fn text_extensions_are_allowed_case_insensitively() {
+        for ok in ["/x/a.md", "/x/a.MARKDOWN", "/x/a.Txt", "/x/a.mkd", "/x/a.mdx"] {
+            assert!(has_allowed_extension(Path::new(ok)), "{ok} should be allowed");
+        }
+    }
+
+    #[test]
+    fn sensitive_and_extensionless_paths_are_refused() {
+        for bad in [
+            "/home/u/.ssh/id_rsa",
+            "/home/u/.ssh/authorized_keys",
+            "/etc/passwd",
+            "/home/u/.bashrc",
+            "/home/u/a.sh",
+            "/home/u/a.exe",
+            "/home/u/Makefile",
+        ] {
+            assert!(!has_allowed_extension(Path::new(bad)), "{bad} should be refused");
+        }
+    }
+
+    #[test]
+    fn read_and_write_reject_a_non_text_path_before_touching_disk() {
+        // The path does not exist; the extension guard must fire first, so the
+        // error is the refusal, never a "file not found".
+        let err = read_markdown_file("/home/u/.ssh/id_rsa".into()).unwrap_err();
+        assert!(err.contains("Refusing to read"), "got: {err}");
+        let err = write_markdown_file("/root/.ssh/authorized_keys".into(), "x".into()).unwrap_err();
+        assert!(err.contains("Refusing to write"), "got: {err}");
+    }
 }
 
 #[cfg(all(test, windows))]
