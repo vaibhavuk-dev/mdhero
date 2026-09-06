@@ -83,13 +83,12 @@
     }));
   }
 
-  async function handleExportPdf() {
-    try {
-      const { getCurrentWebview } = await import("@tauri-apps/api/webview");
-      await getCurrentWebview().print();
-    } catch {
-      window.print();
-    }
+  // `@tauri-apps/api` exposes no print() on Webview or Window (checked through
+  // 2.11), so the former try-branch calling `getCurrentWebview().print()` was
+  // undefined at runtime and always fell through to this. Same behaviour, no
+  // dead code, no type error.
+  function handleExportPdf() {
+    window.print();
   }
 
   async function handleCopyRichText() {
