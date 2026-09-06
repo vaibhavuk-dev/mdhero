@@ -42,6 +42,7 @@ export async function openFile(path: string): Promise<void> {
     await allowAssets(result.assetPaths, absolutePath);
 
     const tabId = tabStore.addTab(absolutePath, fileName, content, result.html, result.frontmatter, result.wordCount);
+    watchFile(absolutePath);
 
     // An empty file has nothing to read — drop straight into the editor so the
     // user can start writing, instead of staring at a blank viewer (#52).
@@ -113,6 +114,7 @@ export async function saveAsNewDocument(tabId: string, content: string): Promise
   const fileName = basename(chosen);
   await saveFile(chosen, content);
   tabStore.rebindPath(tabId, chosen, fileName);
+  watchFile(chosen);
   addRecentFile(chosen, fileName);
   getCurrentWindow().setTitle(`${fileName} — MDHero`).catch(() => {});
   return chosen;
@@ -140,7 +142,14 @@ export async function openFileDialog(): Promise<void> {
   }
 }
 
-export async function reloadCurrentFile(path: string): Promise<void> {
+/**
+ * Re-read `path` from disk after the watcher saw it change (#97). The content
+ * goes to the tab that owns the file — every open tab, not just the active one
+ * — and the on-screen document is repainted only when that tab is the active
+ * one. Before that guard a background file's reload was painted over whatever
+ * the user was reading, the root of the #68 / #91 class of bugs.
+ */
+export async function reloadFile(path: string): Promise<void> {
   try {
     const absolutePath = await resolvePath(path);
     const content = await readMarkdownFile(absolutePath);
@@ -151,6 +160,8 @@ export async function reloadCurrentFile(path: string): Promise<void> {
     await allowAssets(result.assetPaths, absolutePath);
 
     tabStore.updateTabContent(absolutePath, content, result.html, result.frontmatter, result.wordCount);
+
+    if (tabStore.getActiveTab()?.filePath !== absolutePath) return;
 
     document.set({
       filePath: absolutePath,
@@ -165,6 +176,26 @@ export async function reloadCurrentFile(path: string): Promise<void> {
   } catch (err) {
     console.error("Failed to reload file:", err);
   }
+}
+
+/** A path the file watcher can do something with: on disk, not a tab sentinel. */
+export function isWatchablePath(path: string): boolean {
+  return !!path
+    && !path.startsWith("paste://")
+    && !path.startsWith("new://")
+    && !path.startsWith("url://");
+}
+
+/** Ask the backend to deliver `file-changed` events for this file (#97). */
+export function watchFile(path: string): void {
+  if (!isWatchablePath(path)) return;
+  invoke("watch_file", { path }).catch(() => {});
+}
+
+/** Stop events for this file; the directory watch is released with its last file. */
+export function unwatchFile(path: string): void {
+  if (!isWatchablePath(path)) return;
+  invoke("unwatch_file", { path }).catch(() => {});
 }
 
 export function getBaseDir(path: string): string {

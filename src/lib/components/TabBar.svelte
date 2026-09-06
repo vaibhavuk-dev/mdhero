@@ -142,7 +142,7 @@
           class:drag-over={overIndex === idx && dragIndex !== idx && dragIndex >= 0}
         >
           <span class="tab-label">
-            {#if tab.dirty}<span class="tab-dirty" title="Unsaved changes">•</span>{/if}{tab.fileName}
+            {#if tab.diskChanged}<span class="tab-disk" title="Changed on disk while you were editing">⟳</span>{:else if tab.dirty}<span class="tab-dirty" title="Unsaved changes">•</span>{/if}{tab.fileName}
           </span>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <span
@@ -279,6 +279,12 @@
     text-overflow: ellipsis;
     flex: 1;
     text-align: left;
+  }
+
+  .tab-disk {
+    color: #d97706;
+    margin-right: 4px;
+    font-size: 0.9em;
   }
 
   .tab-dirty {
