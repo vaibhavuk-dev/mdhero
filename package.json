@@ -41,6 +41,7 @@
     "@types/dompurify": "^3.2.0",
     "@types/mark.js": "^8.11.12",
     "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.20.1",
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.8",
     "svelte": "^5.0.0",

@@ -18,13 +18,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -35,11 +35,11 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-      # Advisory: svelte-check has never run in CI, so its current baseline is
-      # unknown. Drop continue-on-error once it reports clean.
+      # Blocking. svelte-check reports clean as of the commit that removed
+      # continue-on-error here; with it, the step could never fail the job but
+      # still left a red "exit code 1" annotation on every green run.
       - name: Type check
         run: pnpm check
-        continue-on-error: true
 
   # `tauri build` never compiles #[cfg(test)] code, so Rust tests would be
   # carried along without ever being built. Separate job because it needs the
@@ -47,13 +47,13 @@ jobs:
   rust-test:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -103,13 +103,13 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -228,7 +228,7 @@ jobs:
 
       - name: Upload artifacts
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mdhero-${{ matrix.name }}
           path: |
