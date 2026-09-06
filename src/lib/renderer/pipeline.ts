@@ -127,20 +127,84 @@ const DIR_AUTO_BLOCKS = new Set([
   "th_open",
 ]);
 
+// A paragraph whose whole content is `<div dir="rtl">` / `<div dir="ltr">` (any
+// other attributes tolerated and ignored) or `</div>`. Raw HTML is disabled in
+// the renderer, so these arrive as ordinary paragraphs of text; we recognise
+// exactly these two shapes and nothing else.
+//
+// Two guards keep this linear in the input, because the renderer runs on the
+// UI thread and a document is attacker-controlled: the tag shape is checked
+// with a pattern that has no overlapping quantifiers, and the `dir` value is
+// then read from the attribute text by a second bounded search. A wrapper line
+// is a few dozen characters, so anything longer is not even inspected.
+const DIR_WRAPPER_MAX_LEN = 256;
+const DIR_WRAPPER_TAG = /^<div(?:\s[^>]*)?>$/i;
+const DIR_WRAPPER_VALUE = /(?:^|\s)dir\s*=\s*["']?(rtl|ltr)["']?(?=\s|>|$)/i;
+const DIR_WRAPPER_CLOSE = /^<\/div\s*>$/i;
+
+/** "rtl" / "ltr" when `content` is exactly a direction wrapper line, else null. */
+function wrapperDirection(content: string): "rtl" | "ltr" | null {
+  if (content.length > DIR_WRAPPER_MAX_LEN || !DIR_WRAPPER_TAG.test(content)) return null;
+  const m = content.slice(4, -1).match(DIR_WRAPPER_VALUE);
+  return m ? (m[1].toLowerCase() as "rtl" | "ltr") : null;
+}
+
 /**
- * Stamp `dir="auto"` on each text-bearing block so it picks its own base
- * direction from its first strong-directional character — RTL paragraphs
- * (Hebrew/Arabic) then right-align on their own, like the browser and VSCode,
- * without forcing a whole-document direction (#64). Mixed LTR/RTL docs resolve
- * per block. `dir` is a standard global attribute, so DOMPurify keeps it.
+ * Give each text-bearing block a direction (#64, #95).
+ *
+ * By default that is `dir="auto"`: the block picks its own base direction from
+ * its first strong-directional character, so RTL paragraphs (Hebrew/Arabic)
+ * right-align on their own, like the browser and VSCode, without forcing a
+ * whole-document direction. Mixed LTR/RTL docs resolve per block.
+ *
+ * Authors of RTL documents also write `<div dir="rtl">` … `</div>` around
+ * sections, the way GitHub renders them. Raw HTML stays off in this renderer,
+ * so those lines would otherwise print as literal text; instead a paragraph
+ * that is exactly such a wrapper line is dropped and every block inside gets
+ * that explicit direction. That also covers what `auto` gets wrong on its own —
+ * a Persian paragraph beginning with a product name or a number. Nothing else
+ * about HTML changes. `dir` is a standard global attribute, so DOMPurify keeps
+ * it. A `</div>` with no open wrapper stays as text.
  */
-function addDirAutoPlugin(mdInstance: MarkdownIt) {
-  mdInstance.core.ruler.push("dir-auto", (state) => {
-    for (const token of state.tokens) {
-      if (DIR_AUTO_BLOCKS.has(token.type)) {
-        token.attrSet("dir", "auto");
+function addDirPlugin(mdInstance: MarkdownIt) {
+  mdInstance.core.ruler.push("dir", (state) => {
+    const tokens = state.tokens;
+    const kept: typeof tokens = [];
+    const stack: string[] = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      // A wrapper is a paragraph of its own. `hidden` paragraphs are the
+      // implicit ones inside tight list items; a `<div>` typed as a bullet is
+      // text, not a wrapper, so bullets never vanish.
+      if (
+        token.type === "paragraph_open" &&
+        !token.hidden &&
+        tokens[i + 1]?.type === "inline" &&
+        tokens[i + 2]?.type === "paragraph_close"
+      ) {
+        const content = tokens[i + 1].content.trim();
+        const open = wrapperDirection(content);
+        if (open) {
+          stack.push(open);
+          i += 2;
+          continue;
+        }
+        if (
+          stack.length > 0 &&
+          content.length <= DIR_WRAPPER_MAX_LEN &&
+          DIR_WRAPPER_CLOSE.test(content)
+        ) {
+          stack.pop();
+          i += 2;
+          continue;
+        }
       }
+      if (DIR_AUTO_BLOCKS.has(token.type)) {
+        token.attrSet("dir", stack.length > 0 ? stack[stack.length - 1] : "auto");
+      }
+      kept.push(token);
     }
+    state.tokens = kept;
   });
 }
 
@@ -180,7 +244,7 @@ export async function initRenderer(): Promise<void> {
         .replace(/\s+/g, "-"),
   });
   addSourceLinePlugin(md);
-  addDirAutoPlugin(md);
+  addDirPlugin(md);
 
   initialized = true;
 }
@@ -215,7 +279,7 @@ export function renderFull(markdown: string, baseDir?: string): RenderResult {
       slugify: (s: string) => s.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-"),
     });
     addSourceLinePlugin(md);
-    addDirAutoPlugin(md);
+    addDirPlugin(md);
     initialized = true;
   }
 

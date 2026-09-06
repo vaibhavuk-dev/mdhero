@@ -412,7 +412,7 @@
   article :global(td) {
     border: 1px solid #e5e5ea;
     padding: 0.5em 0.75em;
-    text-align: left;
+    text-align: start;
   }
 
   :global(html.dark) article :global(th),
