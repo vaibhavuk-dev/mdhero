@@ -37,7 +37,7 @@ Small PRs (bug fixes, typos, minor tweaks) don't need an issue first.
 
 ```bash
 # Clone
-git clone https://github.com/vaibhavuk-dev/mdhero.git
+git clone https://github.com/vaibhav-kakde-in/mdhero.git
 cd mdhero
 
 # Install dependencies

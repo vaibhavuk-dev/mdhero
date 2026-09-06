@@ -10,7 +10,7 @@ function detectOS(): string {
 }
 
 const PRIMARY_ENDPOINT = "https://mdhero.app/api/version";
-const FALLBACK_GITHUB = "https://api.github.com/repos/vaibhavuk-dev/mdhero/releases/latest";
+const FALLBACK_GITHUB = "https://api.github.com/repos/vaibhav-kakde-in/mdhero/releases/latest";
 
 const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 const LAST_CHECK_KEY = "mdhero_update_check";

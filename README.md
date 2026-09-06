@@ -8,14 +8,14 @@
 A beautiful, native Markdown viewer and lightweight editor for macOS and Windows. ~8MB. Free. Open source.
 <br><br>
 
-[![GitHub Stars](https://img.shields.io/github/stars/vaibhavuk-dev/mdhero?style=flat-square)](https://github.com/vaibhavuk-dev/mdhero/stargazers)
-[![Downloads](https://img.shields.io/github/downloads/vaibhavuk-dev/mdhero/total?style=flat-square)](https://github.com/vaibhavuk-dev/mdhero/releases/latest)
-[![License](https://img.shields.io/github/license/vaibhavuk-dev/mdhero?style=flat-square)](LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/vaibhav-kakde-in/mdhero?style=flat-square)](https://github.com/vaibhav-kakde-in/mdhero/stargazers)
+[![Downloads](https://img.shields.io/github/downloads/vaibhav-kakde-in/mdhero/total?style=flat-square)](https://github.com/vaibhav-kakde-in/mdhero/releases/latest)
+[![License](https://img.shields.io/github/license/vaibhav-kakde-in/mdhero?style=flat-square)](LICENSE)
 ![macOS](https://img.shields.io/badge/macOS-supported-blue?style=flat-square&logo=apple)
 ![Windows](https://img.shields.io/badge/Windows-supported-blue?style=flat-square&logo=windows)
 [![Built with Tauri](https://img.shields.io/badge/Built_with-Tauri-FFC131?style=flat-square&logo=tauri)](https://tauri.app)
 
-[Download](https://github.com/vaibhavuk-dev/mdhero/releases/latest) · [Website](https://mdhero.app) · [Discussions](https://github.com/vaibhavuk-dev/mdhero/discussions)
+[Download](https://github.com/vaibhav-kakde-in/mdhero/releases/latest) · [Website](https://mdhero.app) · [Discussions](https://github.com/vaibhav-kakde-in/mdhero/discussions)
 
 </div>
 
@@ -115,9 +115,9 @@ Distraction-free full-screen reading. Just you and the document.
 
 ## Install
 
-**macOS**: Download `.dmg` from [Releases →](https://github.com/vaibhavuk-dev/mdhero/releases/latest)
+**macOS**: Download `.dmg` from [Releases →](https://github.com/vaibhav-kakde-in/mdhero/releases/latest)
 
-**Windows**: Download `.msi` from [Releases →](https://github.com/vaibhavuk-dev/mdhero/releases/latest)
+**Windows**: Download `.msi` from [Releases →](https://github.com/vaibhav-kakde-in/mdhero/releases/latest)
 
 Or build from source (see below).
 

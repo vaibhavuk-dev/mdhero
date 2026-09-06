@@ -46,11 +46,11 @@
           <p class="app-description">A beautiful, fast Markdown viewer for your desktop.</p>
           <a
             class="app-link"
-            href="https://github.com/vaibhavuk-dev/mdhero"
+            href="https://github.com/vaibhav-kakde-in/mdhero"
             target="_blank"
             rel="noopener noreferrer"
           >
-            github.com/vaibhavuk-dev/mdhero
+            github.com/vaibhav-kakde-in/mdhero
           </a>
         </div>
       </div>

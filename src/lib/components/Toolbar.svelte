@@ -1,5 +1,6 @@
 <script lang="ts">
   import { document } from "../stores/document";
+  import { MOD } from "$lib/utils/platform";
   import { settings } from "../stores/settings";
   import { themeMode, cycleTheme } from "../stores/theme";
   import { tocVisible, tocEntries, toggleToc, activeHeadingId } from "../stores/toc";
@@ -122,10 +123,10 @@
     <img src={brandLogo} alt="MDHero" width="26" height="26" class="toolbar-logo" />
     <span class="toolbar-wordmark">MDHero</span>
     <div class="btn-group">
-      <button onclick={onOpen} class="btn btn-primary" title="Open file (Cmd+O)">
+      <button onclick={onOpen} class="btn btn-primary" title="Open file ({MOD}+O)">
         Open
       </button>
-      <button onclick={onPaste} class="btn btn-ghost" title="Paste markdown (Cmd+Shift+V)">
+      <button onclick={onPaste} class="btn btn-ghost" title="Paste markdown ({MOD}+Shift+V)">
         Paste
       </button>
       <button onclick={onUrl} class="btn btn-ghost" title="Open URL">
@@ -234,7 +235,7 @@
         ? 'View raw markdown (open a file first)'
         : isEditing
         ? 'View raw markdown (exit edit mode to use)'
-        : 'View raw markdown (Cmd+U)'}
+        : `View raw markdown (${MOD}+U)`}
     >
       <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="6,5 2,8 6,11"/>
@@ -264,7 +265,7 @@
       class="btn btn-icon save-btn"
       class:dirty
       disabled={!dirty}
-      title={dirty ? 'Save unsaved changes (Cmd+S)' : 'Save (no changes to save)'}
+      title={dirty ? `Save unsaved changes (${MOD}+S)` : 'Save (no changes to save)'}
     >
       <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 3h8l2 2v8H3z"/>
@@ -331,7 +332,7 @@
     <button
       onclick={() => { closeAll(); onOpenSettings(); }}
       class="btn btn-icon"
-      title="Settings (Cmd+,)"
+      title="Settings ({MOD}+,)"
       aria-label="Settings"
     >
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">

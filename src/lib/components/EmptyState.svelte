@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { MOD } from "$lib/utils/platform";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openFileDialog, openFile, newDocument } from "../tauri/files";
   import { recentFiles, clearRecentFiles } from "../stores/recents";
@@ -226,7 +227,7 @@
   <!-- Footer -->
   <div class="footer-row">
     <div class="footer-hint">
-      <kbd>Cmd+O</kbd> browse &middot; <kbd>Cmd+Shift+V</kbd> paste &middot; <kbd>Cmd+T</kbd> new tab
+      <kbd>{MOD}+O</kbd> browse &middot; <kbd>{MOD}+Shift+V</kbd> paste &middot; <kbd>{MOD}+T</kbd> new tab
       {#if plansHidden && plans.length > 0}
         &middot; <button class="footer-link" onclick={showPlans}>Show Claude Plans</button>
       {/if}

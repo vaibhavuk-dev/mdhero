@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { MOD } from "$lib/utils/platform";
   import { open as openDirDialog } from "@tauri-apps/plugin-dialog";
   import { openFile, openFileDialog } from "$lib/tauri/files";
   import { recentFiles, removeRecentFile } from "$lib/stores/recents";
@@ -200,7 +201,7 @@
             <path d="M2 5l4-3h8v11H2V5z"/><line x1="2" y1="5" x2="6" y2="5"/>
           </svg>
           <span>Browse Files...</span>
-          <span class="browse-hint">Cmd+O</span>
+          <span class="browse-hint">{MOD}+O</span>
         </button>
         <div class="url-row">
           <input

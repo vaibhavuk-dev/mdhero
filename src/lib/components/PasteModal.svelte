@@ -1,5 +1,6 @@
 <script lang="ts">
   import { isLlmEscaped, unescapeLlmOutput } from "$lib/utils/llm";
+  import { MOD } from "$lib/utils/platform";
   import { isUrl, toRawUrl, urlToFileName } from "$lib/utils/url";
   import { renderFull } from "$lib/renderer/pipeline";
   import { tabStore } from "$lib/stores/tabs";
@@ -185,7 +186,7 @@
         </div>
 
         <div class="modal-footer">
-          <span class="modal-hint">Cmd+Enter to render</span>
+          <span class="modal-hint">{MOD}+Enter to render</span>
           <div class="modal-actions">
             <button onclick={() => (visible = false)} class="btn-cancel">Cancel</button>
             <button onclick={handleRender} disabled={!text.trim()} class="btn-render">Render</button>
@@ -220,7 +221,7 @@
         </div>
 
         <div class="modal-footer">
-          <span class="modal-hint">Cmd+Enter to fetch</span>
+          <span class="modal-hint">{MOD}+Enter to fetch</span>
           <div class="modal-actions">
             <button onclick={() => (visible = false)} class="btn-cancel">Cancel</button>
           </div>

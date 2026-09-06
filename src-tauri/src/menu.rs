@@ -1,5 +1,5 @@
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, WINDOW_SUBMENU_ID},
+    menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     AppHandle, Runtime,
 };
 
@@ -89,9 +89,15 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> Result<Menu<R>, tauri::Err
     //
     // `close_window` is intentionally omitted: its default accelerator is
     // Cmd+W, which the app already binds in the File menu to "Close Tab".
+    //
+    // Not built on Linux. Its two entries, `minimize` and `maximize`, are
+    // documented by muda as "Linux: Unsupported" — GTK creates nothing for
+    // them, so the menu opened as an empty panel (#62, Ubuntu screenshot).
+    // Windows implements both, so it keeps the submenu.
+    #[cfg(not(target_os = "linux"))]
     let window_menu = Submenu::with_id_and_items(
         app,
-        WINDOW_SUBMENU_ID,
+        tauri::menu::WINDOW_SUBMENU_ID,
         "Window",
         true,
         &[
@@ -100,10 +106,12 @@ pub fn create_menu<R: Runtime>(app: &AppHandle<R>) -> Result<Menu<R>, tauri::Err
         ],
     )?;
 
-    let menu = Menu::with_items(
-        app,
-        &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
-    )?;
+    #[cfg(not(target_os = "linux"))]
+    let items: [&dyn IsMenuItem<R>; 5] = [&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu];
+    #[cfg(target_os = "linux")]
+    let items: [&dyn IsMenuItem<R>; 4] = [&app_menu, &file_menu, &edit_menu, &view_menu];
+
+    let menu = Menu::with_items(app, &items)?;
 
     Ok(menu)
 }
